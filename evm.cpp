@@ -1,4 +1,3 @@
-
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -10,21 +9,14 @@
 #include <chrono>
 #include <cstring>
 #include <random>
-#include <algorithm>
 #include <fstream>
+#include <algorithm>
 
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/bn.h>
-#include <openssl/obj_mac.h>
 #include <openssl/err.h>
-
-// ============================================================================
-// FAST KECCAK-256 (Ethereum variant)
-// ============================================================================
-// This is a optimized, unrolled Keccak-f[1600] implementation for Keccak-256.
-// It is NOT SHA3-256. Ethereum uses Keccak-256 (padding 0x01 not 0x06).
-// ============================================================================
+#include <openssl/obj_mac.h>
 
 typedef uint64_t Kuint64_t;
 
@@ -60,7 +52,6 @@ static void keccak256(const uint8_t *in, size_t inlen, uint8_t out[32]) {
         in += rsiz;
         inlen -= rsiz;
 
-        // Keccak-f[1600] permutation
         for (int round = 0; round < KECCAK_ROUNDS; round++) {
             Kuint64_t C[5], D[5], B[25];
 
@@ -226,10 +217,6 @@ static void keccak256(const uint8_t *in, size_t inlen, uint8_t out[32]) {
     memcpy(out, st, 32);
 }
 
-// ============================================================================
-// HEX UTILS
-// ============================================================================
-
 static const char HEX_TABLE[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 
 inline void bytes_to_hex(const uint8_t *bin, size_t len, char *hex) {
@@ -248,10 +235,6 @@ inline bool hex_to_bytes(const std::string &hex, uint8_t *out) {
     }
     return true;
 }
-
-// ============================================================================
-// PATTERN MATCHING
-// ============================================================================
 
 enum class MatchMode {
     PREFIX,
@@ -308,8 +291,7 @@ inline bool match_pattern(const char *addr, const Pattern &pat) {
             }
             return true;
         }
-    } else { // ANYWHERE
-        // Simple but fast strstr-like for hex
+    } else {
         for (size_t i = 0; i <= addr_len - pat_len; i++) {
             bool ok = true;
             for (size_t j = 0; j < pat_len; j++) {
@@ -323,22 +305,11 @@ inline bool match_pattern(const char *addr, const Pattern &pat) {
     }
 }
 
-// ============================================================================
-// EVM ADDRESS GENERATION
-// ============================================================================
-
-// Uncompressed public key (65 bytes: 0x04 + X(32) + Y(32))
-// We hash the 64-byte X+Y part (excluding 0x04)
-
 inline void pub_to_address(const uint8_t pub[65], uint8_t addr[20]) {
     uint8_t hash[32];
     keccak256(pub + 1, 64, hash);
-    memcpy(addr, hash + 12, 20); // last 20 bytes
+    memcpy(addr, hash + 12, 20);
 }
-
-// ============================================================================
-// THREAD WORKER
-// ============================================================================
 
 struct Result {
     std::string address;
@@ -392,7 +363,6 @@ public:
             threads.emplace_back(&VanityGenerator::worker, this, i);
         }
 
-        // Progress reporter
         std::thread reporter(&VanityGenerator::progress_loop, this, start);
 
         for (auto &t : threads) t.join();
@@ -453,7 +423,6 @@ private:
                 EVP_PKEY *pkey = nullptr;
                 if (EVP_PKEY_keygen(ctx, &pkey) <= 0) continue;
 
-                // Extract public key
                 uint8_t pub[65];
                 size_t publen = 65;
                 EVP_PKEY_get_raw_public_key(pkey, pub, &publen);
@@ -470,12 +439,10 @@ private:
                 }
 
                 if (matched) {
-                    // Extract private key
                     BIGNUM *priv = BN_new();
                     EVP_PKEY_get_bn_param(pkey, "priv", &priv);
                     char *priv_hex_str = BN_bn2hex(priv);
 
-                    // Normalize to lowercase
                     for (char *p = priv_hex_str; *p; p++) {
                         if (*p >= 'A' && *p <= 'F') *p = *p - 'A' + 'a';
                     }
@@ -521,10 +488,6 @@ private:
         }
     }
 };
-
-// ============================================================================
-// MAIN
-// ============================================================================
 
 void print_usage(const char *prog) {
     std::cout << "Usage: " << prog << " [options] <pattern1> [pattern2] ...\n\n";
